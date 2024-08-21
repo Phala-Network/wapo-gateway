@@ -58,9 +58,10 @@ async function run_guest_script(cid: string, path: string, req: HonoRequest) {
           secret: JSON.stringify(secret || ''),
         },
         timeLimit: 60_000,
-        gasLimit: 100_000,
-        memoryLimit: 1024 * 1024 * 10,
-        polyfills: ['browser'],
+        gasLimit: 200_000,
+        memoryLimit: 1024 * 1024 * 20,
+        // polyfills: ['browser'],
+        polyfills: ['nodejs'],
       }, resolve)
     )
     return result
@@ -70,7 +71,7 @@ async function run_guest_script(cid: string, path: string, req: HonoRequest) {
   }
 }
 
-app.get('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
+app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
   try {
     const cid = c.req.param('cid')
     const path = c.req.path.replace(`/ipfs/${cid}`, '/')
