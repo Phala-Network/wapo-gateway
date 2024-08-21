@@ -1,0 +1,25 @@
+{
+  "name": "wapo-gateway",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/node": "^22.1.0",
+    "@types/ramda": "^0.30.1",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "^0.2.2",
+    "@libsql/client": "^0.8.1",
+    "hono": "^4.5.4",
+    "ramda": "^0.30.1",
+    "zod": "^3.23.8"
+  }
+}
