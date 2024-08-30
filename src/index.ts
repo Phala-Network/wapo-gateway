@@ -1,6 +1,7 @@
 import { Hono, HonoRequest } from 'hono'
 import { logger } from 'hono/logger'
 import { timing } from 'hono/timing'
+import { requestId } from 'hono/request-id'
 import { zValidator } from '@hono/zod-validator'
 
 import { handle } from '@phala/wapo-env/host'
@@ -13,6 +14,7 @@ const app = new Hono()
 
 app.use('*', logger())
 app.use('*', timing())
+app.use('*', requestId())
 
 async function run_guest_script(cid: string, path: string, req: HonoRequest) {
   const code = await cached(cid, fetch_pinata)
@@ -36,8 +38,6 @@ async function run_guest_script(cid: string, path: string, req: HonoRequest) {
     }
   }
 
-  // const path = c.req.path.replace(`/ipfs/${cid}`, '/')
-  // console.log(c.req.path, cid, path)
   const payload = {
     method: req.method,
     url: `https://wapo-gateway${path}`,
@@ -49,26 +49,14 @@ async function run_guest_script(cid: string, path: string, req: HonoRequest) {
     secret: secret || undefined,
   }
 
-  try {
-    const result = await new Promise((resolve) => 
-      Wapo.isolateEval({
-        scripts: [code],
-        args: [JSON.stringify(payload)],
-        env: {
-          secret: JSON.stringify(secret || ''),
-        },
-        timeLimit: 60_000,
-        gasLimit: 200_000,
-        memoryLimit: 1024 * 1024 * 20,
-        // polyfills: ['browser'],
-        polyfills: ['nodejs'],
-      }, resolve)
-    )
-    return result
-  } catch (err) {
-    console.log('error')
-    console.log(err)
-  }
+  const result = await Wapo.run(code, {
+    args: [JSON.stringify(payload)],
+    env: {
+      secret: JSON.stringify(secret || ''),
+    },
+  })
+
+  return result
 }
 
 app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
@@ -77,8 +65,8 @@ app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
     const path = c.req.path.replace(`/ipfs/${cid}`, '/')
 
     const result = await run_guest_script(cid, path, c.req)
-    if (result) {
-      const payload = JSON.parse(result as string)
+    if (result.isOk) {
+      const payload = JSON.parse(result.value as string)
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
     }
   } catch (err) {
