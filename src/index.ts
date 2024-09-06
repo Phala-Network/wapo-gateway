@@ -25,9 +25,7 @@ const LogLevel: Readonly<Record<number, string>> = {
   4: 'ERROR',
 }
 
-async function run_guest_script(cid: string, path: string, req: HonoRequest, requestId: string) {
-  const code = await cached(cid, fetch_pinata)
-
+async function run_guest_script(code: string, scriptId: string, path: string, req: HonoRequest, requestId: string) {
   //
   // Prepare payload
   //
@@ -69,7 +67,6 @@ async function run_guest_script(cid: string, path: string, req: HonoRequest, req
 
   const ended = Date.now()
 
-  const scriptId = `ipfs/${cid}`
   const q ='INSERT INTO logs (script_id, request_id, level, message, created_at) VALUES (?, ?, ?, ?, ?)'
   const statements = [{
     q,
@@ -125,7 +122,25 @@ app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
     const cid = c.req.param('cid')
     const path = c.req.path.replace(`/ipfs/${cid}`, '/')
 
-    const result = await run_guest_script(cid, path, c.req, c.get('requestId'))
+    const code = await cached(cid, fetch_pinata)
+    const result = await run_guest_script(code, `ipfs/${cid}`, path, c.req, c.get('requestId'))
+    if (result.isOk) {
+      const payload = JSON.parse(result.value as string)
+      return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
+    } else {
+      return c.body(`Server Error\nRequest ID: ${c.get('requestId')}`, 500)
+    }
+  } catch (err) {
+    console.log(err)
+  }
+  return c.body('Bad request', 400)
+})
+
+app.all('/local', async (c) => {
+  try {
+    console.log('fetching code from', process.env.WAPOJS_PUBLIC_FILE_URL)
+    const code = await fetch(`${process.env.WAPOJS_PUBLIC_FILE_URL}`).then(r => r.text())
+    const result = await run_guest_script(code, 'local', '/', c.req, c.get('requestId'))
     if (result.isOk) {
       const payload = JSON.parse(result.value as string)
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
