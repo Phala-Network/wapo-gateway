@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup'
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/test-guest-app.ts'],
+  entry: ['src/index.ts', 'src/guest-app.ts'],
   splitting: false,
   sourcemap: true,
   clean: true,
@@ -17,9 +17,9 @@ export default defineConfig({
     }
   },
   esbuildOptions(options) {
-    options.banner = {
-      js: 'var module = module || { exports: {} };',
-    }
+    // options.banner = {
+    //   js: '"use wapo";\nvar module = module || { exports: {} };',
+    // }
     options.footer = {
       js: 'module.exports = module.exports?.default;',
     }

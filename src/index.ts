@@ -1,10 +1,14 @@
+import type { RunCodeReturns } from '@phala/wapo-env'
 import { Hono, HonoRequest } from 'hono'
+import { type StatusCode } from 'hono/utils/http-status'
 import { logger } from 'hono/logger'
 import { timing } from 'hono/timing'
 import { requestId } from 'hono/request-id'
 import { zValidator } from '@hono/zod-validator'
 import * as R from 'ramda'
 import { z } from 'zod'
+import { decode } from '@msgpack/msgpack'
+
 
 import { handle } from '@phala/wapo-env/host'
 
@@ -18,12 +22,22 @@ const app = new Hono()
 app.use('*', logger())
 app.use('*', timing())
 app.use('*', requestId())
+app.use(async (c, next) => {
+  await next()
+  c.header('x-powered-by', 'wapo-gateway')
+})
 
 const LogLevel: Readonly<Record<number, string>> = {
   2: 'INFO',
   3: 'WARN',
   4: 'ERROR',
 }
+
+type WrappedHonoResponse = RunCodeReturns<{
+  body: unknown
+  status: StatusCode
+  headers: Record<string, string>
+}>
 
 async function run_guest_script(code: string, scriptId: string, path: string, req: HonoRequest, requestId: string) {
   //
@@ -59,6 +73,7 @@ async function run_guest_script(code: string, scriptId: string, path: string, re
   const started = Date.now()
 
   const result = await Wapo.run(code, {
+    // NOTE: We don't use msgpack in the this part for forward compatibility
     args: [JSON.stringify(payload)],
     env: {
       secret: JSON.stringify(secret || ''),
@@ -114,7 +129,15 @@ async function run_guest_script(code: string, scriptId: string, path: string, re
   })
   await sqld_execute(statements)
 
-  return result
+  if (result.isOk) {
+    if (Object.prototype.toString.call(result.value) === '[object Uint8Array]') {
+      result.value = decode(result.value as string)
+    } else if (typeof result.value === 'string') {
+      result.value = JSON.parse(result.value)
+    }
+  }
+
+  return result as WrappedHonoResponse
 }
 
 app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
@@ -125,7 +148,7 @@ app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
     const code = await cached(cid, fetch_pinata)
     const result = await run_guest_script(code, `ipfs/${cid}`, path, c.req, c.get('requestId'))
     if (result.isOk) {
-      const payload = JSON.parse(result.value as string)
+      const payload = result.value
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
     } else {
       return c.body(`Server Error\nRequest ID: ${c.get('requestId')}`, 500)
@@ -142,7 +165,7 @@ app.all('/local', async (c) => {
     const code = await fetch(`${process.env.WAPOJS_PUBLIC_FILE_URL}`).then(r => r.text())
     const result = await run_guest_script(code, 'local', '/', c.req, c.get('requestId'))
     if (result.isOk) {
-      const payload = JSON.parse(result.value as string)
+      const payload = result.value
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
     } else {
       return c.body(`Server Error\nRequest ID: ${c.get('requestId')}`, 500)
@@ -267,20 +290,16 @@ CREATE TABLE IF NOT EXISTS logs (
   return c.text('pong')
 })
 
+let handler
 
-// function main() {
-//   const handler = handle(app)
-//   handler()
-// }
-
-// main()
-
-if (!process.env.WAPOJS_PUBLIC_CERT || !process.env.WAPOJS_PUBLIC_KEY) {
-  throw new Error('Missing WAPOJS_PUBLIC_CERT or WAPOJS_PUBLIC_KEY')
+if (process.env.WAPOJS_PUBLIC_CERT && process.env.WAPOJS_PUBLIC_KEY && process.env.WAPOJS_PUBLIC_SERVER_NAME) {
+  const certificateChain = Buffer.from(process.env.WAPOJS_PUBLIC_CERT, 'base64').toString('utf-8')
+  const privateKey = Buffer.from(process.env.WAPOJS_PUBLIC_KEY, 'base64').toString('utf-8')
+  const serverName = process.env.WAPOJS_PUBLIC_SERVER_NAME || 'localhost'
+  handler = handle(app, { certificateChain, privateKey, serverName })
+} else {
+  handler = handle(app, { address: process.env.WAPOJS_BIND! })
 }
 
-const certificateChain = Buffer.from(process.env.WAPOJS_PUBLIC_CERT, 'base64').toString('utf-8')
-const privateKey = Buffer.from(process.env.WAPOJS_PUBLIC_KEY, 'base64').toString('utf-8')
-const serverName = process.env.WAPOJS_PUBLIC_SERVER_NAME || 'localhost'
+export default handler
 
-export default handle(app, { certificateChain, privateKey, serverName })
