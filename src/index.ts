@@ -58,11 +58,13 @@ async function run_guest_script(code: string, scriptId: string, path: string, re
       secret = item.secret
     }
   }
+  const query = new URLSearchParams(req.queries())
 
   const payload = {
     method: req.method,
-    url: `https://wapo-gateway${path}`,
+    url: `https://wapo-gateway${path}?${query.toString()}`,
     path,
+    // NOTE: useless here?
     queries: req.queries(),
     // @ts-ignore
     headers: Object.fromEntries(req.raw.headers.entries()),
