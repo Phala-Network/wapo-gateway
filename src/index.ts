@@ -51,11 +51,16 @@ async function run_guest_script(code: string, scriptId: string, path: string, re
 
   // const key = c.req.query('key') || legacyKey
   const key = req.query('key')
+  console.log('secret key:', key)
   let secret: any = undefined
   if (key) {
+    console.log(`fetching secret for key ${key}`)
     const item = await get_vault_item(key)
     if (item) {
       secret = item.secret
+      console.log(`Found secret for key ${key}`)
+    } else {
+      console.log(`No secret found for key ${key}`)
     }
   }
   const query = new URLSearchParams(req.queries())
@@ -81,6 +86,7 @@ async function run_guest_script(code: string, scriptId: string, path: string, re
       secret: JSON.stringify(secret || ''),
     },
   })
+  console.log('run guest result', result.isOk, result.error)
 
   const ended = Date.now()
 
@@ -149,7 +155,7 @@ app.all('/ipfs/:cid{[a-zA-Z0-9\/]+}', async (c) => {
 
     const code = await cached(cid, fetch_pinata)
     const result = await run_guest_script(code, `ipfs/${cid}`, path, c.req, c.get('requestId'))
-    if (result.isOk) {
+    if (result.isOk && result.value && result.value.status) {
       const payload = result.value
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
     } else {
@@ -166,7 +172,7 @@ app.all('/local', async (c) => {
     console.log('fetching code from', process.env.WAPOJS_PUBLIC_FILE_URL)
     const code = await fetch(`${process.env.WAPOJS_PUBLIC_FILE_URL}`).then(r => r.text())
     const result = await run_guest_script(code, 'local', '/', c.req, c.get('requestId'))
-    if (result.isOk) {
+    if (result.isOk && result.value && result.value.status) {
       const payload = result.value
       return c.body(payload.body ?? '', payload.status ?? 200, payload.headers ?? {})
     } else {
